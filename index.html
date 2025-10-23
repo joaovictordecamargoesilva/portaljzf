@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-T" />
+    <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portal JZF</title>
@@ -32,11 +32,9 @@
 </script>
 <!-- Babel Standalone for in-browser transpilation -->
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-brand-secondary">
     <div id="root"></div>
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
-<script type="module" src="/index.tsx"></script>
+    <script type="text/babel" data-presets="react,typescript" data-type="module" src="./index.tsx"></script>
 </body>
 </html>
