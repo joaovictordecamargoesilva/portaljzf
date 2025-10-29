@@ -79,69 +79,68 @@ const App: React.FC = () => {
         return users.find(u => u.id === currentUserId) || null;
     }, [currentUserId, users]);
     
-    // Initial data load
-    useEffect(() => {
-        const fetchData = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                const data = await api.fetchAllData();
-                setUsers(data.users || []);
-                setClients(data.clients || []);
-                setDocuments(data.documents || []);
-                setInvoices(data.invoices || []);
-                setTaxGuides(data.taxGuides || []);
-                setTasks(data.tasks || []);
-                setSettings(data.settings || { pixKey: '', paymentLink: '' });
-                setNotifications(data.notifications || []);
-                setOpportunities(data.opportunities || []);
-                setComplianceFindings(data.complianceFindings || []);
-                setTaskTemplateSets(data.taskTemplateSets || []);
-                setEmployees(data.employees || []);
-                setTimeSheets(data.timeSheets || []);
-                setCurrentUserId(data.currentUserId);
-                setDocumentTemplates(data.documentTemplates || []);
-                setApiKeys(data.apiKeys || []);
-                
-                const user = data.users.find((u: User) => u.id === data.currentUserId);
-                if (user) {
-                    // Set initial view based on user type
-                    if (user.role === 'Cliente' && user.clientIds.length > 1) {
-                         setCurrentView('multi-client-dashboard');
-                    } else {
-                         setCurrentView('dashboard');
-                    }
-                }
-                
-                // --- Active Client Validation Logic ---
-                let finalActiveClientId = data.activeClientId;
-
-                if (user && user.role === 'Cliente' && user.clientIds && user.clientIds.length > 0) {
-                    const storedId = data.activeClientId;
-                    if (!storedId || !user.clientIds.includes(storedId)) {
-                        finalActiveClientId = user.clientIds[0];
-                        await api.setActiveClient(finalActiveClientId);
-                    }
-                } else if (user && user.role !== 'Cliente' && data.activeClientId !== null) {
-                    finalActiveClientId = null;
-                    await api.setActiveClient(null);
-                }
-                setActiveClientId(finalActiveClientId);
-                lastDocCheckTimestamp.current = new Date().toISOString();
-                lastInvoiceCheckTimestamp.current = new Date().toISOString();
-            } catch (error: any) {
-                console.error("Failed to fetch initial data:", error.message || error);
-                if (error.message.includes('Não autorizado')) {
-                    setCurrentUserId(null);
+    // Centralized function to fetch all application data
+    const loadAppData = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const data = await api.fetchAllData();
+            setUsers(data.users || []);
+            setClients(data.clients || []);
+            setDocuments(data.documents || []);
+            setInvoices(data.invoices || []);
+            setTaxGuides(data.taxGuides || []);
+            setTasks(data.tasks || []);
+            setSettings(data.settings || { pixKey: '', paymentLink: '' });
+            setNotifications(data.notifications || []);
+            setOpportunities(data.opportunities || []);
+            setComplianceFindings(data.complianceFindings || []);
+            setTaskTemplateSets(data.taskTemplateSets || []);
+            setEmployees(data.employees || []);
+            setTimeSheets(data.timeSheets || []);
+            setCurrentUserId(data.currentUserId);
+            setDocumentTemplates(data.documentTemplates || []);
+            setApiKeys(data.apiKeys || []);
+            
+            const user = data.users.find((u: User) => u.id === data.currentUserId);
+            if (user) {
+                if (user.role === 'Cliente' && user.clientIds.length > 1) {
+                     setCurrentView('multi-client-dashboard');
                 } else {
-                    setError("Não foi possível carregar os dados da aplicação. O servidor pode estar indisponível.");
+                     setCurrentView('dashboard');
                 }
-            } finally {
-                setIsLoading(false);
             }
-        };
-        fetchData();
+            
+            let finalActiveClientId = data.activeClientId;
+            if (user && user.role === 'Cliente' && user.clientIds && user.clientIds.length > 0) {
+                const storedId = data.activeClientId;
+                if (!storedId || !user.clientIds.includes(storedId)) {
+                    finalActiveClientId = user.clientIds[0];
+                    await api.setActiveClient(finalActiveClientId);
+                }
+            } else if (user && user.role !== 'Cliente' && data.activeClientId !== null) {
+                finalActiveClientId = null;
+                await api.setActiveClient(null);
+            }
+            setActiveClientId(finalActiveClientId);
+            lastDocCheckTimestamp.current = new Date().toISOString();
+            lastInvoiceCheckTimestamp.current = new Date().toISOString();
+        } catch (error: any) {
+            console.error("Failed to fetch app data:", error.message || error);
+            if (error.message.includes('Não autorizado')) {
+                setCurrentUserId(null); // No user is logged in
+            } else {
+                setError("Não foi possível carregar os dados da aplicação. O servidor pode estar indisponível.");
+            }
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
+
+    // Initial data load on component mount
+    useEffect(() => {
+        loadAppData();
+    }, [loadAppData]);
 
     // Polling for real-time updates
     useEffect(() => {
@@ -197,20 +196,38 @@ const App: React.FC = () => {
     }, []);
 
     const handleLogin = async (username: string, password: string) => {
+        setIsLoading(true);
         try {
+            // Step 1: Login to set the cookie
             await api.login(username, password);
-            window.location.reload();
+            // Step 2: Fetch all data using the new cookie, this will update the state and re-render the app
+            await loadAppData(); 
         } catch (error: any) {
             console.error("Login failed:", error);
-            throw error;
+            setIsLoading(false); // Ensure loading is stopped on failure
+            throw error; // Re-throw to be caught by the Login component
         }
     };
 
     const handleLogout = async () => {
         setIsLoading(true);
-        await api.logout();
-        setCurrentUserId(null); // Immediately clear user
-        window.location.reload();
+        try {
+            await api.logout();
+        } catch (error) {
+            console.error("Logout failed:", error);
+        } finally {
+            // Reset all state to defaults
+            setCurrentUserId(null);
+            setUsers([]);
+            setClients([]);
+            setDocuments([]);
+            setInvoices([]);
+            setTaxGuides([]);
+            setTasks([]);
+            // ... reset other states
+            setIsLoading(false);
+            // The component will re-render and show the Login screen because currentUser is null
+        }
     };
 
     const handleSwitchClient = async (clientId: number | null) => {
