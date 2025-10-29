@@ -22,97 +22,101 @@ const safeJsonParse = <T>(jsonString: string | null | undefined, defaultValue: T
     }
 };
 
-const getAllData = async (req: Request, res: Response) => {
+// Refactored logic into a reusable function
+export const getInitialAppData = async (user: User, prisma: Request['prisma']) => {
+    const isAdmin = user.role.includes('Admin');
+    const isGeneralAdmin = user.role === 'AdminGeral';
+    const clientIds = user.clientIds;
+
+    const whereClause = isAdmin ? undefined : { clientId: { in: clientIds } };
+
+    const apiKeysPromise = isGeneralAdmin 
+        ? prisma.apiKey.findMany({ select: { id: true, name: true, createdAt: true }}) 
+        : Promise.resolve([]);
+
+    const [
+        allUsers, allClients, documents, invoices, tasks, settings, notifications,
+        opportunities, complianceFindings, taskTemplateSets, employees, timeSheets, documentTemplates,
+        taxGuides, apiKeys
+    ] = await prisma.$transaction([
+        prisma.user.findMany({ include: { clients: true } }),
+        prisma.client.findMany(),
+        prisma.document.findMany({ where: whereClause, include: { signatures: true, requiredSignatories: true, auditLog: true } }),
+        prisma.invoice.findMany({ where: whereClause }),
+        prisma.task.findMany({ where: whereClause }),
+        prisma.settings.findUnique({ where: { id: 1 } }),
+        prisma.appNotification.findMany({ where: { OR: [{ userId: null }, { userId: user.id }] }, orderBy: { date: 'desc' } }),
+        prisma.opportunity.findMany({ where: whereClause }),
+        prisma.complianceFinding.findMany({ where: whereClause }),
+        prisma.taskTemplateSet.findMany(),
+        prisma.employee.findMany({ where: whereClause }),
+        prisma.timeSheet.findMany({ where: whereClause }),
+        prisma.documentTemplate.findMany(),
+        prisma.taxGuide.findMany({ where: whereClause }),
+        apiKeysPromise,
+    ]);
+    
+    const clientsForUser = isAdmin ? allClients : allClients.filter((c: any) => clientIds.includes(c.id));
+    const usersForUser = isAdmin ? allUsers : allUsers.filter((u: any) => u.id === user.id || u.role.includes('Admin'));
+
+    const formattedDocs = documents.map((doc: any) => ({
+        ...doc,
+        uploadDate: doc.uploadDate.toISOString(),
+        file: safeJsonParse(doc.file as string | null, null),
+        formData: safeJsonParse(doc.formData as string | null, null),
+        workflow: safeJsonParse(doc.workflow as string | null, null),
+        signatures: doc.signatures.map((s: any) => ({...s, id: String(s.id), date: s.date.toISOString(), auditTrail: safeJsonParse(s.auditTrail as string, {})})),
+        requiredSignatories: (doc.requiredSignatories || []).map((rs: any) => ({ ...rs, id: String(rs.id), status: rs.status as 'pendente' | 'assinado' })),
+        aiAnalysis: safeJsonParse(doc.aiAnalysis as string | null, null),
+        auditLog: doc.auditLog.map((l: any) => ({...l, id: String(l.id), date: l.date.toISOString()})),
+        description: doc.description ?? undefined,
+        requestText: doc.requestText ?? undefined,
+        templateId: doc.templateId ?? undefined,
+    }));
+    
+    const formattedClients = clientsForUser.map((c: any) => ({
+        ...c,
+        cnaes: safeJsonParse(c.cnaes, []),
+        keywords: safeJsonParse(c.keywords, []),
+        cnpj: c.cnpj ?? undefined,
+    }));
+
+    return {
+        currentUserId: user.id,
+        activeClientId: user.activeClientId,
+        users: usersForUser.map((u: any) => toAppUser(u)),
+        clients: formattedClients,
+        documents: formattedDocs,
+        invoices: invoices.map((i: any) => ({ 
+            id: i.id,
+            clientId: i.clientId,
+            description: i.description,
+            amount: i.amount,
+            dueDate: i.dueDate.toISOString(),
+            status: i.status as 'Pendente' | 'Pago' | 'Atrasado',
+            isRecurring: i.isRecurring,
+            paymentMethods: safeJsonParse(i.boletoPdf as string | null, null)
+        })),
+        tasks: tasks.map((t: any) => ({ ...t, creationDate: t.creationDate.toISOString() })),
+        settings: settings || { pixKey: '', paymentLink: '' },
+        notifications: notifications.map((n: any) => ({...n, date: n.date.toISOString()})),
+        opportunities: opportunities.map((o: any) => ({...o, dateFound: o.dateFound.toISOString(), submissionDeadline: o.submissionDeadline?.toISOString()})),
+        complianceFindings: complianceFindings.map((c: any) => ({...c, dateChecked: c.dateChecked.toISOString()})),
+        taskTemplateSets: taskTemplateSets.map((t: any) => ({ ...t, taskDescriptions: safeJsonParse(t.taskDescriptions, []) })),
+        employees: employees.map((e: any) => ({...e, cbo: e.cbo ?? undefined})),
+        timeSheets: timeSheets.map((ts: any) => ({...ts, aiAnalysisNotes: ts.aiAnalysisNotes ?? undefined, sourceFile: safeJsonParse(ts.sourceFile as string | null, null)})),
+        documentTemplates: documentTemplates.map((dt: any) => ({...dt, fields: safeJsonParse(dt.fields as string | null, null), fileConfig: safeJsonParse(dt.fileConfig as string | null, null), steps: safeJsonParse(dt.steps as string | null, null)})),
+        taxGuides: taxGuides.map((tg: any) => ({ ...tg, dueDate: tg.dueDate.toISOString(), uploadedAt: tg.uploadedAt.toISOString(), paidAt: tg.paidAt?.toISOString() })),
+        apiKeys: (apiKeys as any[]).map((k: any) => ({ ...k, createdAt: k.createdAt.toISOString() })),
+    };
+};
+
+
+const getAllDataHandler = async (req: Request, res: Response) => {
     const user = req.user as User;
-
     try {
-        const isAdmin = user.role.includes('Admin');
-        const isGeneralAdmin = user.role === 'AdminGeral';
-        const clientIds = user.clientIds;
-
-        const whereClause = isAdmin ? undefined : { clientId: { in: clientIds } };
-
-        // Fetch API keys only if user is AdminGeral
-        const apiKeysPromise = isGeneralAdmin 
-            ? req.prisma.apiKey.findMany({ select: { id: true, name: true, createdAt: true }}) 
-            : Promise.resolve([]);
-
-        const [
-            allUsers, allClients, documents, invoices, tasks, settings, notifications,
-            opportunities, complianceFindings, taskTemplateSets, employees, timeSheets, documentTemplates,
-            taxGuides, apiKeys
-        ] = await req.prisma.$transaction([
-            req.prisma.user.findMany({ include: { clients: true } }),
-            req.prisma.client.findMany(),
-            req.prisma.document.findMany({ where: whereClause, include: { signatures: true, requiredSignatories: true, auditLog: true } }),
-            req.prisma.invoice.findMany({ where: whereClause }),
-            req.prisma.task.findMany({ where: whereClause }),
-            req.prisma.settings.findUnique({ where: { id: 1 } }),
-            req.prisma.appNotification.findMany({ where: { OR: [{ userId: null }, { userId: user.id }] }, orderBy: { date: 'desc' } }),
-            req.prisma.opportunity.findMany({ where: whereClause }),
-            req.prisma.complianceFinding.findMany({ where: whereClause }),
-            req.prisma.taskTemplateSet.findMany(),
-            req.prisma.employee.findMany({ where: whereClause }),
-            req.prisma.timeSheet.findMany({ where: whereClause }),
-            req.prisma.documentTemplate.findMany(),
-            req.prisma.taxGuide.findMany({ where: whereClause }),
-            apiKeysPromise,
-        ]);
-        
-        const clientsForUser = isAdmin ? allClients : allClients.filter((c: any) => clientIds.includes(c.id));
-        const usersForUser = isAdmin ? allUsers : allUsers.filter((u: any) => u.id === user.id || u.role.includes('Admin'));
-
-        const formattedDocs = documents.map((doc: any) => ({
-            ...doc,
-            uploadDate: doc.uploadDate.toISOString(),
-            file: safeJsonParse(doc.file as string | null, null),
-            formData: safeJsonParse(doc.formData as string | null, null),
-            workflow: safeJsonParse(doc.workflow as string | null, null),
-            signatures: doc.signatures.map((s: any) => ({...s, id: String(s.id), date: s.date.toISOString(), auditTrail: safeJsonParse(s.auditTrail as string, {})})),
-            requiredSignatories: (doc.requiredSignatories || []).map((rs: any) => ({ ...rs, id: String(rs.id), status: rs.status as 'pendente' | 'assinado' })),
-            aiAnalysis: safeJsonParse(doc.aiAnalysis as string | null, null),
-            auditLog: doc.auditLog.map((l: any) => ({...l, id: String(l.id), date: l.date.toISOString()})),
-            description: doc.description ?? undefined,
-            requestText: doc.requestText ?? undefined,
-            templateId: doc.templateId ?? undefined,
-        }));
-        
-        const formattedClients = clientsForUser.map((c: any) => ({
-            ...c,
-            cnaes: safeJsonParse(c.cnaes, []),
-            keywords: safeJsonParse(c.keywords, []),
-            cnpj: c.cnpj ?? undefined,
-        }));
-
-        res.json({
-            currentUserId: user.id,
-            activeClientId: user.activeClientId,
-            users: usersForUser.map((u: any) => toAppUser(u)),
-            clients: formattedClients,
-            documents: formattedDocs,
-            invoices: invoices.map((i: any) => ({ 
-                id: i.id,
-                clientId: i.clientId,
-                description: i.description,
-                amount: i.amount,
-                dueDate: i.dueDate.toISOString(),
-                status: i.status as 'Pendente' | 'Pago' | 'Atrasado',
-                isRecurring: i.isRecurring,
-                paymentMethods: safeJsonParse(i.boletoPdf as string | null, null)
-            })),
-            tasks: tasks.map((t: any) => ({ ...t, creationDate: t.creationDate.toISOString() })),
-            settings: settings || { pixKey: '', paymentLink: '' },
-            notifications: notifications.map((n: any) => ({...n, date: n.date.toISOString()})),
-            opportunities: opportunities.map((o: any) => ({...o, dateFound: o.dateFound.toISOString(), submissionDeadline: o.submissionDeadline?.toISOString()})),
-            complianceFindings: complianceFindings.map((c: any) => ({...c, dateChecked: c.dateChecked.toISOString()})),
-            taskTemplateSets: taskTemplateSets.map((t: any) => ({ ...t, taskDescriptions: safeJsonParse(t.taskDescriptions, []) })),
-            employees: employees.map((e: any) => ({...e, cbo: e.cbo ?? undefined})),
-            timeSheets: timeSheets.map((ts: any) => ({...ts, aiAnalysisNotes: ts.aiAnalysisNotes ?? undefined, sourceFile: safeJsonParse(ts.sourceFile as string | null, null)})),
-            documentTemplates: documentTemplates.map((dt: any) => ({...dt, fields: safeJsonParse(dt.fields as string | null, null), fileConfig: safeJsonParse(dt.fileConfig as string | null, null), steps: safeJsonParse(dt.steps as string | null, null)})),
-            taxGuides: taxGuides.map((tg: any) => ({ ...tg, dueDate: tg.dueDate.toISOString(), uploadedAt: tg.uploadedAt.toISOString(), paidAt: tg.paidAt?.toISOString() })),
-            apiKeys: (apiKeys as any[]).map((k: any) => ({ ...k, createdAt: k.createdAt.toISOString() })),
-        });
-
+        const data = await getInitialAppData(user, req.prisma);
+        res.json(data);
     } catch (error) {
         console.error("Failed to fetch all data:", error);
         res.status(500).json({ message: "Failed to load application data." });
@@ -161,7 +165,7 @@ const markAllNotificationsRead = async (req: Request, res: Response) => {
     res.json(notifications.map((n: any) => ({...n, date: n.date.toISOString()})));
 };
 
-router.get('/all-data', getAllData);
+router.get('/all-data', getAllDataHandler);
 router.post('/active-client/:clientId', setActiveClient);
 router.post('/notifications', addNotification);
 router.put('/notifications/:id/read', markNotificationRead);
