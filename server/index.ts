@@ -102,7 +102,7 @@ async function startServer() {
     };
 
     // Core Middlewares
-    app.set('trust proxy', 1); // Trust the first proxy
+    app.set('trust proxy', true); // Trust the full proxy chain
     app.use(cors({ origin: true, credentials: true }));
     app.use(express.json({ limit: '20mb' }));
     app.use(express.urlencoded({ extended: true, limit: '20mb' }));
