@@ -1,1 +1,235 @@
-ˇÙ·ä»¨
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                  Int                 @id @default(autoincrement())
+  username            String              @unique
+  password            String
+  role                String // AdminGeral, AdminLimitado, Cliente
+  name                String
+  email               String              @unique
+  // Permissions for AdminLimitado
+  canManageClients    Boolean             @default(false)
+  canManageDocuments  Boolean             @default(false)
+  canManageBilling    Boolean             @default(false)
+  canManageAdmins     Boolean             @default(false)
+  canManageSettings   Boolean             @default(false)
+  canViewReports      Boolean             @default(false)
+  canViewDashboard    Boolean             @default(true)
+  canManageTasks      Boolean             @default(false)
+  clients             Client[]            @relation("ClientUsers")
+  activeClientId      Int?
+  signatures          Signature[]
+  requiredSignatories RequiredSignatory[]
+  notifications       AppNotification[]
+}
+
+model Client {
+  id                  Int                 @id @default(autoincrement())
+  name                String
+  company             String
+  cnpj                String?             @unique
+  email               String
+  phone               String
+  status              String // Ativo, Inativo
+  taxRegime           String // SimplesNacional, LucroPresumido, LucroReal
+  cnaes               String // JSON array of strings
+  keywords            String // JSON array of strings
+  businessDescription String
+  users               User[]              @relation("ClientUsers")
+  documents           Document[]
+  invoices            Invoice[]
+  tasks               Task[]
+  opportunities       Opportunity[]
+  complianceFindings  ComplianceFinding[]
+  employees           Employee[]
+  timeSheets          TimeSheet[]
+  taxGuides           TaxGuide[]
+}
+
+model Document {
+  id                  Int                 @id @default(autoincrement())
+  clientId            Int
+  client              Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name                String
+  description         String?
+  type                String // PDF, Excel, XML, Outro, Formul√°rio
+  uploadDate          DateTime            @default(now())
+  uploadedBy          String
+  source              String // cliente, escritorio
+  status              String // Pendente, Recebido, Revisado, AguardandoAssinatura, AguardandoAprovacao, PendenteEtapa2, Concluido
+  requestText         String?
+  file                String? // JSON { name, type, content: base64 }
+  templateId          String?
+  formData            String? // JSON
+  workflow            String? // JSON { currentStep, totalSteps }
+  signatures          Signature[]
+  requiredSignatories RequiredSignatory[]
+  auditLog            AuditLog[]
+  aiAnalysis          String? // JSON
+}
+
+model Signature {
+  id          Int      @id @default(autoincrement())
+  documentId  Int
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime
+  signatureId String
+  auditTrail  String // JSON
+}
+
+model RequiredSignatory {
+  id         Int      @id @default(autoincrement())
+  documentId Int
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  status     String // pendente, assinado
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  documentId Int
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       String
+  date       DateTime @default(now())
+  action     String
+}
+
+model Invoice {
+  id          String  @id @default(cuid())
+  clientId    Int
+  client      Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  description String
+  amount      Float
+  dueDate     DateTime
+  status      String // Pendente, Pago, Atrasado
+  isRecurring Boolean
+  boletoPdf   String? // JSON for payment methods
+}
+
+model Settings {
+  id          Int    @id @default(1)
+  pixKey      String
+  paymentLink String
+}
+
+model AppNotification {
+  id      Int      @id @default(autoincrement())
+  userId  Int?
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message String
+  date    DateTime @default(now())
+  read    Boolean  @default(false)
+  link    String?
+}
+
+model Task {
+  id           Int      @id @default(autoincrement())
+  clientId     Int
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  description  String
+  status       String // Pendente, Concluida
+  isRecurring  Boolean
+  createdBy    String
+  creationDate DateTime @default(now())
+}
+
+model Opportunity {
+  id                 String    @id @default(cuid())
+  clientId           Int
+  client             Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type               String // IncentivoFiscal, EditalLicitacao, Outro
+  title              String
+  description        String    @db.Text
+  source             String
+  dateFound          DateTime
+  submissionDeadline DateTime?
+}
+
+model ComplianceFinding {
+  id          String   @id @default(cuid())
+  clientId    Int
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title       String
+  status      String // OK, Atencao, Pendencia, Informativo
+  summary     String   @db.Text
+  sourceUrl   String
+  dateChecked DateTime
+}
+
+model TaskTemplateSet {
+  id               String @id @default(cuid())
+  name             String
+  taskDescriptions String // JSON array of strings
+}
+
+model Employee {
+  id         Int         @id @default(autoincrement())
+  clientId   Int
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name       String
+  role       String
+  status     String // Ativo, Inativo
+  salary     Float
+  cbo        String?
+  timeSheets TimeSheet[]
+}
+
+model TimeSheet {
+  id                    String    @id
+  clientId              Int
+  client                Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  employeeId            Int
+  employee              Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  month                 Int
+  year                  Int
+  status                String // PendenteDeEnvio, EnviadoParaAnalise, Processado, ErroNaAnalise
+  totalOvertimeHours50  Float
+  totalOvertimeHours100 Float
+  totalNightlyHours     Float
+  totalLatenessMinutes  Float
+  totalAbsencesDays     Float
+  dsrValue              Float
+  sourceFile            String? // JSON { name, type, content: base64 }
+  aiAnalysisNotes       String?
+}
+
+model DocumentTemplate {
+  id         String  @id
+  name       String
+  category   String
+  fields     String? // JSON
+  fileConfig String? // JSON
+  steps      String? // JSON
+}
+
+model TaxGuide {
+  id             Int       @id @default(autoincrement())
+  clientId       Int
+  client         Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name           String
+  referenceMonth Int
+  referenceYear  Int
+  dueDate        DateTime
+  amount         Float
+  status         String // Pendente, Pago, Atrasado
+  fileName       String
+  fileContent    String    @db.Text
+  uploadedAt     DateTime  @default(now())
+  uploadedBy     String
+  paidAt         DateTime?
+  paymentReceipt String?   @db.Text
+}
