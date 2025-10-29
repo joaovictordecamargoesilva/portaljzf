@@ -153,7 +153,7 @@ model Opportunity {
   client             Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   type               String // IncentivoFiscal, EditalLicitacao, Outro
   title              String
-  description        String    @db.Text
+  description        String
   source             String
   dateFound          DateTime
   submissionDeadline DateTime?
@@ -165,7 +165,7 @@ model ComplianceFinding {
   client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   title       String
   status      String // OK, Atencao, Pendencia, Informativo
-  summary     String   @db.Text
+  summary     String
   sourceUrl   String
   dateChecked DateTime
 }
@@ -227,9 +227,9 @@ model TaxGuide {
   amount         Float
   status         String // Pendente, Pago, Atrasado
   fileName       String
-  fileContent    String    @db.Text
+  fileContent    String
   uploadedAt     DateTime  @default(now())
   uploadedBy     String
   paidAt         DateTime?
-  paymentReceipt String?   @db.Text
+  paymentReceipt String?
 }
