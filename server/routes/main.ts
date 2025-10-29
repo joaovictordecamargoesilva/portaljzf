@@ -27,14 +27,20 @@ const getAllData = async (req: Request, res: Response) => {
 
     try {
         const isAdmin = user.role.includes('Admin');
+        const isGeneralAdmin = user.role === 'AdminGeral';
         const clientIds = user.clientIds;
 
         const whereClause = isAdmin ? undefined : { clientId: { in: clientIds } };
 
+        // Fetch API keys only if user is AdminGeral
+        const apiKeysPromise = isGeneralAdmin 
+            ? req.prisma.apiKey.findMany({ select: { id: true, name: true, createdAt: true }}) 
+            : Promise.resolve([]);
+
         const [
             allUsers, allClients, documents, invoices, tasks, settings, notifications,
             opportunities, complianceFindings, taskTemplateSets, employees, timeSheets, documentTemplates,
-            taxGuides
+            taxGuides, apiKeys
         ] = await req.prisma.$transaction([
             req.prisma.user.findMany({ include: { clients: true } }),
             req.prisma.client.findMany(),
@@ -50,6 +56,7 @@ const getAllData = async (req: Request, res: Response) => {
             req.prisma.timeSheet.findMany({ where: whereClause }),
             req.prisma.documentTemplate.findMany(),
             req.prisma.taxGuide.findMany({ where: whereClause }),
+            apiKeysPromise,
         ]);
         
         const clientsForUser = isAdmin ? allClients : allClients.filter((c: any) => clientIds.includes(c.id));
@@ -103,6 +110,7 @@ const getAllData = async (req: Request, res: Response) => {
             timeSheets: timeSheets.map((ts: any) => ({...ts, aiAnalysisNotes: ts.aiAnalysisNotes ?? undefined, sourceFile: safeJsonParse(ts.sourceFile as string | null, null)})),
             documentTemplates: documentTemplates.map((dt: any) => ({...dt, fields: safeJsonParse(dt.fields as string | null, null), fileConfig: safeJsonParse(dt.fileConfig as string | null, null), steps: safeJsonParse(dt.steps as string | null, null)})),
             taxGuides: taxGuides.map((tg: any) => ({ ...tg, dueDate: tg.dueDate.toISOString(), uploadedAt: tg.uploadedAt.toISOString(), paidAt: tg.paidAt?.toISOString() })),
+            apiKeys: (apiKeys as any[]).map((k: any) => ({ ...k, createdAt: k.createdAt.toISOString() })),
         });
 
     } catch (error) {
