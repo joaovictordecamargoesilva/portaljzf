@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { User, UserPermissions, UserRole } from './types';
 import bcrypt from 'bcrypt';
 import { CookieOptions } from 'express';
+import { getInitialAppData } from './routes/main';
 
 const AUTH_COOKIE_NAME = 'jzf_auth_userId';
 
@@ -84,14 +85,25 @@ const loginHandler = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'Nome de usuário ou senha inválidos.' });
     }
 
+    // Set the authentication cookie
     const cookieOpts = getCookieOptions(req);
-
     res.cookie(AUTH_COOKIE_NAME, userFromDb.id, {
         ...cookieOpts,
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
     
-    res.json(toAppUser(userFromDb));
+    // THE FIX: Instead of just returning the user, fetch and return the entire
+    // initial application payload. This eliminates the race condition on the client
+    // where it tries to fetch data before the cookie is set.
+    try {
+        const appUser = toAppUser(userFromDb);
+        const initialData = await getInitialAppData(appUser, req.prisma);
+        res.json(initialData);
+    } catch (error) {
+        console.error("Failed to fetch initial data on login:", error);
+        // Fallback to sending just the user if data fetch fails, but log the error.
+        res.status(500).json({ message: "Login successful, but failed to load application data." });
+    }
 };
 
 const logoutHandler = (req: Request, res: Response) => {
