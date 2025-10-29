@@ -18,7 +18,7 @@ import TaxGuideView from './components/TaxGuideView';
 import QuickSendModal from './components/QuickSendModal';
 import ClientDashboardView from './components/ClientDashboardView';
 import MultiClientDashboardView from './components/MultiClientDashboardView';
-import { User, Client, Document, Invoice, Settings, AppNotification, Task, Opportunity, TaskTemplateSet, Employee, TimeSheet, DocumentTemplate, ComplianceFinding, TaxGuide } from './types';
+import { User, Client, Document, Invoice, Settings, AppNotification, Task, Opportunity, TaskTemplateSet, Employee, TimeSheet, DocumentTemplate, ComplianceFinding, TaxGuide, ApiKey } from './types';
 import * as api from './services/api';
 import Icon from './components/Icon';
 
@@ -62,6 +62,7 @@ const App: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [timeSheets, setTimeSheets] = useState<TimeSheet[]>([]);
     const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplate[]>([]);
+    const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
     const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
     const [activeClientId, setActiveClientId] = useState<number | null>(null);
@@ -100,6 +101,7 @@ const App: React.FC = () => {
                 setTimeSheets(data.timeSheets || []);
                 setCurrentUserId(data.currentUserId);
                 setDocumentTemplates(data.documentTemplates || []);
+                setApiKeys(data.apiKeys || []);
                 
                 const user = data.users.find((u: User) => u.id === data.currentUserId);
                 if (user) {
@@ -330,7 +332,7 @@ const App: React.FC = () => {
             case 'cobranca': return <BillingView invoices={invoices} setInvoices={setInvoices} currentUser={currentUser} clients={clients} users={users} settings={settings} addNotification={addNotification} activeClientId={activeClientId} setIsLoading={setIsLoading} />;
             case 'guias': return <TaxGuideView taxGuides={taxGuides} setTaxGuides={setTaxGuides} currentUser={currentUser} clients={clients} users={users} addNotification={addNotification} activeClientId={activeClientId} setIsLoading={setIsLoading} />;
             case 'administradores': return <AdminManagementView users={users} setUsers={setUsers} setIsLoading={setIsLoading} />;
-            case 'configuracoes': return <SettingsView settings={settings} setSettings={setSettings} taskTemplateSets={taskTemplateSets} setTaskTemplateSets={setTaskTemplateSets} setIsLoading={setIsLoading} />;
+            case 'configuracoes': return <SettingsView settings={settings} setSettings={setSettings} taskTemplateSets={taskTemplateSets} setTaskTemplateSets={setTaskTemplateSets} apiKeys={apiKeys} setApiKeys={setApiKeys} setIsLoading={setIsLoading} />;
             case 'relatorios': return <ReportsView currentUser={currentUser} clients={clients} opportunities={opportunities} setOpportunities={setOpportunities} complianceFindings={complianceFindings} setComplianceFindings={setComplianceFindings} isRadarRunning={isRadarRunning} activeClientId={activeClientId} />;
             case 'novos-relatorios': return <NewReportsView currentUser={currentUser} clients={clients} invoices={invoices} documents={documents} tasks={tasks} activeClientId={activeClientId} />;
             case 'tarefas': return <TasksView tasks={tasks} setTasks={setTasks} currentUser={currentUser} clients={clients} users={users} addNotification={addNotification} setDirectAction={setDirectAction} setCurrentView={setCurrentView} activeClientId={activeClientId} setIsLoading={setIsLoading} />;
