@@ -246,4 +246,11 @@ export interface TaxGuide {
   paymentReceipt?: string | null; // base64
 }
 
+export interface ApiKey {
+  id: string;
+  name: string;
+  createdAt: string; // ISO string
+}
+
+
 export {};
