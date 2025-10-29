@@ -66,9 +66,16 @@ const loginHandler = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'Nome de usuário ou senha inválidos.' });
     }
 
+    // Determine cookie settings based on the request protocol.
+    // With `app.set('trust proxy', true)` in index.ts, `req.secure` will be true for HTTPS requests,
+    // even when behind a reverse proxy (like on Render). This is more reliable than NODE_ENV.
+    const isSecureConnection = req.secure || req.protocol === 'https';
+
     res.cookie(AUTH_COOKIE_NAME, userFromDb.id, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        // `secure` MUST be true if `sameSite` is 'none'. This logic ensures it.
+        secure: isSecureConnection,
+        sameSite: isSecureConnection ? 'none' : 'lax', // 'none' is required for cross-domain iframes
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
         path: '/',
     });
