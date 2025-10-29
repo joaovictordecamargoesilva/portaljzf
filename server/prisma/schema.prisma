@@ -79,7 +79,7 @@ model Document {
 }
 
 model Signature {
-  id          Int      @id @default(autoincrement())
+  id          String   @id @default(cuid())
   documentId  Int
   document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   userId      Int
@@ -90,7 +90,7 @@ model Signature {
 }
 
 model RequiredSignatory {
-  id         Int      @id @default(autoincrement())
+  id         String   @id @default(cuid())
   documentId Int
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   userId     Int
@@ -100,7 +100,7 @@ model RequiredSignatory {
 }
 
 model AuditLog {
-  id         Int      @id @default(autoincrement())
+  id         String   @id @default(cuid())
   documentId Int
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   user       String
@@ -232,4 +232,11 @@ model TaxGuide {
   uploadedBy     String
   paidAt         DateTime?
   paymentReceipt String?
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  name      String
+  keyHash   String
+  createdAt DateTime @default(now())
 }
