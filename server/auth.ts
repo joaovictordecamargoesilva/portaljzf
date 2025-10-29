@@ -81,7 +81,63 @@ const logoutHandler = (req: Request, res: Response) => {
     res.status(200).json({ message: 'Logout realizado com sucesso.' });
 };
 
+export const apiKeyMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return next(); // No API key, proceed to cookie auth
+    }
+
+    const providedKey = authHeader.split(' ')[1];
+    if (!providedKey) {
+        return next();
+    }
+
+    try {
+        const apiKeys = await req.prisma.apiKey.findMany();
+        let validKeyEntry = null;
+
+        for (const keyEntry of apiKeys) {
+            const match = await bcrypt.compare(providedKey, keyEntry.keyHash);
+            if (match) {
+                validKeyEntry = keyEntry;
+                break;
+            }
+        }
+
+        if (validKeyEntry) {
+            // Found a valid key. Create a synthetic AdminGeral user.
+            req.user = {
+                id: 0, // System user ID
+                username: 'api_user',
+                name: validKeyEntry.name,
+                email: '',
+                role: 'AdminGeral',
+                permissions: {
+                    canManageClients: true, canManageDocuments: true, canManageBilling: true,
+                    canManageAdmins: true, canManageSettings: true, canViewReports: true,
+                    canViewDashboard: true, canManageTasks: true
+                },
+                clientIds: [], // API has access to all clients, controlled by routes
+                activeClientId: null,
+            };
+        }
+        // If key is invalid, we just proceed. The next middleware will fail if no user is set.
+        return next();
+
+    } catch (error) {
+        console.error("API Key middleware error:", error);
+        // Don't send response here, let it fall through
+        return next();
+    }
+};
+
+
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+    // If a user was already authenticated by the API key middleware, skip cookie check.
+    if (req.user) {
+        return next();
+    }
+
     const userId = req.cookies[AUTH_COOKIE_NAME];
     
     if (!userId) {
