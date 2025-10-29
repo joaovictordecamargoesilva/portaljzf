@@ -1,4 +1,4 @@
-import { User, Client, Invoice, AppNotification, TaskTemplateSet, Employee, TimeSheet, Document, Signature, Task, TaskStatus, DocumentTemplate, Settings, Opportunity, ComplianceFinding, DocumentStatus, TaxGuide } from '../types';
+import { User, Client, Invoice, AppNotification, TaskTemplateSet, Employee, TimeSheet, Document, Signature, Task, TaskStatus, DocumentTemplate, Settings, Opportunity, ComplianceFinding, DocumentStatus, TaxGuide, ApiKey } from '../types';
 
 const API_BASE_URL = '/api';
 
@@ -119,6 +119,21 @@ export const deleteTaskTemplate = async (templateId: string): Promise<{ success:
     const response = await fetch(`${API_BASE_URL}/settings/task-templates/${templateId}`, { method: 'DELETE' });
     return handleResponse(response);
 };
+
+// API Keys
+export const createApiKey = async (name: string): Promise<{ apiKey: ApiKey; rawKey: string }> => {
+    const response = await fetch(`${API_BASE_URL}/settings/api-keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+    });
+    return handleResponse(response);
+};
+
+export const deleteApiKey = async (id: string): Promise<{ success: boolean }> => {
+    const response = await fetch(`${API_BASE_URL}/settings/api-keys/${id}`, { method: 'DELETE' });
+    return handleResponse(response);
+}
 
 // Users / Admins
 export const createAdmin = async (adminData: any): Promise<User> => {
