@@ -44,6 +44,27 @@ const ErrorDisplay: FC<{ error: string }> = ({ error }) => (
     </div>
 );
 
+// Helper function to set all data states from a payload
+const setAllDataStates = (data: any, setters: any) => {
+    setters.setUsers(data.users || []);
+    setters.setClients(data.clients || []);
+    setters.setDocuments(data.documents || []);
+    setters.setInvoices(data.invoices || []);
+    setters.setTaxGuides(data.taxGuides || []);
+    setters.setTasks(data.tasks || []);
+    setters.setSettings(data.settings || { pixKey: '', paymentLink: '' });
+    setters.setNotifications(data.notifications || []);
+    setters.setOpportunities(data.opportunities || []);
+    setters.setComplianceFindings(data.complianceFindings || []);
+    setters.setTaskTemplateSets(data.taskTemplateSets || []);
+    setters.setEmployees(data.employees || []);
+    setters.setTimeSheets(data.timeSheets || []);
+    setters.setCurrentUserId(data.currentUserId);
+    setters.setDocumentTemplates(data.documentTemplates || []);
+    setters.setApiKeys(data.apiKeys || []);
+    return data;
+};
+
 
 const App: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
@@ -85,23 +106,10 @@ const App: React.FC = () => {
         setError(null);
         try {
             const data = await api.fetchAllData();
-            setUsers(data.users || []);
-            setClients(data.clients || []);
-            setDocuments(data.documents || []);
-            setInvoices(data.invoices || []);
-            setTaxGuides(data.taxGuides || []);
-            setTasks(data.tasks || []);
-            setSettings(data.settings || { pixKey: '', paymentLink: '' });
-            setNotifications(data.notifications || []);
-            setOpportunities(data.opportunities || []);
-            setComplianceFindings(data.complianceFindings || []);
-            setTaskTemplateSets(data.taskTemplateSets || []);
-            setEmployees(data.employees || []);
-            setTimeSheets(data.timeSheets || []);
-            setCurrentUserId(data.currentUserId);
-            setDocumentTemplates(data.documentTemplates || []);
-            setApiKeys(data.apiKeys || []);
             
+            const allSetters = { setUsers, setClients, setDocuments, setInvoices, setTaxGuides, setTasks, setSettings, setNotifications, setOpportunities, setComplianceFindings, setTaskTemplateSets, setEmployees, setTimeSheets, setCurrentUserId, setDocumentTemplates, setApiKeys };
+            setAllDataStates(data, allSetters);
+
             const user = data.users.find((u: User) => u.id === data.currentUserId);
             if (user) {
                 if (user.role === 'Cliente' && user.clientIds.length > 1) {
@@ -198,14 +206,29 @@ const App: React.FC = () => {
     const handleLogin = async (username: string, password: string) => {
         setIsLoading(true);
         try {
-            // Step 1: Login to set the cookie
-            await api.login(username, password);
-            // Step 2: Fetch all data using the new cookie, this will update the state and re-render the app
-            await loadAppData(); 
+            // THE FIX: The login API now returns the entire initial payload,
+            // eliminating the race condition of a second API call.
+            const data = await api.login(username, password);
+
+            // Use a helper to set all states from the login response
+            const allSetters = { setUsers, setClients, setDocuments, setInvoices, setTaxGuides, setTasks, setSettings, setNotifications, setOpportunities, setComplianceFindings, setTaskTemplateSets, setEmployees, setTimeSheets, setCurrentUserId, setDocumentTemplates, setApiKeys };
+            setAllDataStates(data, allSetters);
+            
+            const user = data.users.find((u: User) => u.id === data.currentUserId);
+            if (user) {
+                if (user.role === 'Cliente' && user.clientIds.length > 1) {
+                     setCurrentView('multi-client-dashboard');
+                } else {
+                     setCurrentView('dashboard');
+                }
+            }
+            setActiveClientId(data.activeClientId);
+            
         } catch (error: any) {
             console.error("Login failed:", error);
-            setIsLoading(false); // Ensure loading is stopped on failure
             throw error; // Re-throw to be caught by the Login component
+        } finally {
+            setIsLoading(false); // Stop loading indicator
         }
     };
 
