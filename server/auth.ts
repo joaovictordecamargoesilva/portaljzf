@@ -1,8 +1,23 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { User, UserPermissions, UserRole } from './types';
 import bcrypt from 'bcrypt';
+import { CookieOptions } from 'express';
 
 const AUTH_COOKIE_NAME = 'jzf_auth_userId';
+
+// Helper to get consistent cookie options
+const getCookieOptions = (req: Request): CookieOptions => {
+    // In production, we MUST assume a secure connection for SameSite=None to work in iframes.
+    // This is safer than relying solely on req.secure, which depends on proxy configuration.
+    const isSecure = process.env.NODE_ENV === 'production' || req.secure;
+    return {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: isSecure ? 'none' : 'lax',
+        path: '/',
+    };
+};
+
 
 const getValidatedRole = (role: string): UserRole => {
     if (role === 'AdminGeral' || role === 'AdminLimitado' || role === 'Cliente') {
@@ -66,25 +81,18 @@ const loginHandler = async (req: Request, res: Response) => {
         return res.status(401).json({ message: 'Nome de usuário ou senha inválidos.' });
     }
 
-    // Determine cookie settings based on the request protocol.
-    // With `app.set('trust proxy', true)` in index.ts, `req.secure` will be true for HTTPS requests,
-    // even when behind a reverse proxy (like on Render). This is more reliable than NODE_ENV.
-    const isSecureConnection = req.secure || req.protocol === 'https';
+    const cookieOpts = getCookieOptions(req);
 
     res.cookie(AUTH_COOKIE_NAME, userFromDb.id, {
-        httpOnly: true,
-        // `secure` MUST be true if `sameSite` is 'none'. This logic ensures it.
-        secure: isSecureConnection,
-        sameSite: isSecureConnection ? 'none' : 'lax', // 'none' is required for cross-domain iframes
+        ...cookieOpts,
         maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        path: '/',
     });
     
     res.json(toAppUser(userFromDb));
 };
 
 const logoutHandler = (req: Request, res: Response) => {
-    res.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+    res.clearCookie(AUTH_COOKIE_NAME, getCookieOptions(req));
     res.status(200).json({ message: 'Logout realizado com sucesso.' });
 };
 
@@ -159,7 +167,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
         
         if (!userFromDb) {
             // Clear the invalid cookie
-            res.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+            res.clearCookie(AUTH_COOKIE_NAME, getCookieOptions(req));
             return res.status(401).json({ message: 'Não autorizado: Usuário não encontrado.' });
         }
         
