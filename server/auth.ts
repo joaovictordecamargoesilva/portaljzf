@@ -7,13 +7,14 @@ const AUTH_COOKIE_NAME = 'jzf_auth_userId';
 
 // Helper to get consistent cookie options
 const getCookieOptions = (req: Request): CookieOptions => {
-    // In production, we MUST assume a secure connection for SameSite=None to work in iframes.
-    // This is safer than relying solely on req.secure, which depends on proxy configuration.
-    const isSecure = process.env.NODE_ENV === 'production' || req.secure;
+    // A more robust check for production. If the hostname is not 'localhost' or '127.0.0.1',
+    // we assume it's a deployed environment that runs over HTTPS and requires a secure cookie for iframes.
+    const isProduction = req.hostname !== 'localhost' && !req.hostname.startsWith('127.');
+    
     return {
         httpOnly: true,
-        secure: isSecure,
-        sameSite: isSecure ? 'none' : 'lax',
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
         path: '/',
     };
 };
