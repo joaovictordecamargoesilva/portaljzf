@@ -116,16 +116,16 @@ async function startServer() {
     // Serve Frontend
     if (process.env.NODE_ENV === 'production') {
         const frontendDist = path.resolve(__dirname, '..');
+        
+        // 1. Serve static assets from the 'dist' folder
         app.use(express.static(frontendDist));
 
-        const frontendHandler = (req: Request, res: Response, next: NextFunction) => {
-            if (req.path.startsWith('/api/')) {
-                return next();
-            }
+        // 2. For any other GET request that is not for an API endpoint,
+        // serve the index.html file. This is the SPA fallback.
+        app.get(/^(?!\/api).*/, (req: Request, res: Response) => {
             res.sendFile(path.resolve(frontendDist, 'index.html'));
-        };
-        
-        app.get('*', frontendHandler);
+        });
+
     } else {
         // Use Vite as middleware in development
         const { createServer: createViteServer } = await import('vite');
