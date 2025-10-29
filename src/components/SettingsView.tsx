@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, TaskTemplateSet } from '../types';
+import { Settings, TaskTemplateSet, ApiKey } from '../types';
 import Icon from './Icon';
 import Modal from './Modal';
 import * as api from '../services/api';
@@ -9,14 +9,19 @@ interface SettingsViewProps {
   setSettings: React.Dispatch<React.SetStateAction<Settings>>;
   taskTemplateSets: TaskTemplateSet[];
   setTaskTemplateSets: React.Dispatch<React.SetStateAction<TaskTemplateSet[]>>;
+  apiKeys: ApiKey[];
+  setApiKeys: React.Dispatch<React.SetStateAction<ApiKey[]>>;
   setIsLoading: (loading: boolean) => void;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ settings, setSettings, taskTemplateSets, setTaskTemplateSets, setIsLoading }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ settings, setSettings, taskTemplateSets, setTaskTemplateSets, apiKeys, setApiKeys, setIsLoading }) => {
   const [formData, setFormData] = useState<Settings>(settings);
   const [saved, setSaved] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [newApiKey, setNewApiKey] = useState<{ name: string, key: string } | null>(null);
+  const [apiKeyToDelete, setApiKeyToDelete] = useState<ApiKey | null>(null);
 
   const handleRequestPermission = () => {
     Notification.requestPermission().then(permission => {
@@ -70,6 +75,35 @@ const SettingsView: React.FC<SettingsViewProps> = ({ settings, setSettings, task
         }
       }
   };
+
+    const handleCreateApiKey = async (name: string) => {
+        setIsLoading(true);
+        try {
+            const { apiKey, rawKey } = await api.createApiKey(name);
+            setApiKeys(prev => [...prev, apiKey]);
+            setNewApiKey({ name: apiKey.name, key: rawKey });
+        } catch(error) {
+            console.error("Failed to create API key", error);
+            alert("Erro ao criar chave de API.");
+        } finally {
+            setIsLoading(false);
+            setIsApiKeyModalOpen(false);
+        }
+    };
+    
+    const handleDeleteApiKey = async () => {
+        if (!apiKeyToDelete) return;
+        setIsLoading(true);
+        try {
+            await api.deleteApiKey(apiKeyToDelete.id);
+            setApiKeys(prev => prev.filter(k => k.id !== apiKeyToDelete!.id));
+        } catch(error) {
+            console.error("Failed to delete API key", error);
+        } finally {
+            setIsLoading(false);
+            setApiKeyToDelete(null);
+        }
+    }
   
   const TemplateForm: React.FC<{onSave: (data: any) => void, onCancel: () => void}> = ({ onSave, onCancel }) => {
     const [name, setName] = useState('');
@@ -94,7 +128,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({ settings, setSettings, task
       </form>
     );
   };
-
+  
+    const ApiKeyForm: React.FC<{onSave: (name: string) => void, onCancel: () => void}> = ({ onSave, onCancel }) => {
+        const [name, setName] = useState('');
+        return (
+            <form onSubmit={(e) => { e.preventDefault(); onSave(name); }}>
+                <h3 className="text-xl font-semibold mb-4">Gerar Nova Chave de API</h3>
+                <p className="text-gray-600 mb-4">Dê um nome descritivo para sua chave, para que você possa identificar seu uso (ex: "Integração Sistema ERP").</p>
+                <input value={name} onChange={e => setName(e.target.value)} placeholder="Nome da Chave" className="w-full p-2 border rounded" required />
+                <div className="mt-6 flex justify-end space-x-3">
+                    <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                    <button type="submit" className="bg-primary text-white font-bold py-2 px-4 rounded-lg">Gerar Chave</button>
+                </div>
+            </form>
+        );
+    };
 
   return (
     <div>
@@ -200,9 +248,65 @@ const SettingsView: React.FC<SettingsViewProps> = ({ settings, setSettings, task
               {taskTemplateSets.length === 0 && <p className="text-center text-gray-500 py-4">Nenhum modelo de tarefa criado.</p>}
           </div>
         </div>
+        
+         <div className="md:col-span-2 bg-white p-8 rounded-lg shadow-lg">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+                <h3 className="text-2xl font-bold text-black">Acesso via API (Ecossistema)</h3>
+                <p className="text-sm text-gray-500 mt-1">Gere chaves para permitir que sistemas externos acessem a plataforma com segurança.</p>
+            </div>
+            <button onClick={() => setIsApiKeyModalOpen(true)} className="flex items-center bg-primary text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-primary-dark transition-colors">
+              <Icon path="M12 6v6m0 0v6m0-6h6m-6 0H6" className="w-5 h-5 mr-2"/> Gerar Nova Chave
+            </button>
+          </div>
+          <div className="space-y-4">
+              {apiKeys.map(key => (
+                  <div key={key.id} className="bg-gray-50 p-4 rounded-lg flex justify-between items-center">
+                      <div>
+                          <p className="font-bold text-primary">{key.name}</p>
+                          <p className="text-sm text-gray-600 mt-1">Criada em: {new Date(key.createdAt).toLocaleDateString()}</p>
+                      </div>
+                      <button onClick={() => setApiKeyToDelete(key)} className="text-red-500 hover:text-red-700">
+                          <Icon path="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" className="w-5 h-5"/>
+                      </button>
+                  </div>
+              ))}
+              {apiKeys.length === 0 && <p className="text-center text-gray-500 py-4">Nenhuma chave de API gerada.</p>}
+          </div>
+        </div>
       </div>
        <Modal isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)}>
           <TemplateForm onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)}/>
+      </Modal>
+      <Modal isOpen={isApiKeyModalOpen} onClose={() => setIsApiKeyModalOpen(false)}>
+          <ApiKeyForm onSave={handleCreateApiKey} onCancel={() => setIsApiKeyModalOpen(false)} />
+      </Modal>
+      <Modal isOpen={!!newApiKey} onClose={() => setNewApiKey(null)}>
+        <div>
+            <h3 className="text-xl font-semibold mb-2 text-black">Sua Nova Chave de API</h3>
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg my-4 text-center">
+                 <Icon path="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" className="w-8 h-8 text-yellow-500 mx-auto mb-2"/>
+                 <p className="font-bold text-yellow-800">Esta é a única vez que sua chave será exibida. Copie-a e guarde-a em um local seguro.</p>
+            </div>
+            <p className="text-sm text-gray-500">Nome: {newApiKey?.name}</p>
+            <div className="flex items-center bg-gray-100 p-2 rounded-lg border mt-2">
+                <code className="font-mono text-gray-700 text-sm break-all flex-1 mr-2">{newApiKey?.key}</code>
+                <button onClick={() => navigator.clipboard.writeText(newApiKey?.key || '')} className="bg-primary text-white font-bold py-1 px-3 rounded-md text-sm">Copiar</button>
+            </div>
+             <div className="mt-6 flex justify-end">
+                <button type="button" onClick={() => setNewApiKey(null)} className="bg-primary text-white font-bold py-2 px-4 rounded-lg">Fechar</button>
+            </div>
+        </div>
+      </Modal>
+      <Modal isOpen={!!apiKeyToDelete} onClose={() => setApiKeyToDelete(null)}>
+          <div>
+            <h3 className="text-xl font-semibold mb-4">Revogar Chave de API</h3>
+            <p>Você tem certeza que deseja revogar a chave <strong>"{apiKeyToDelete?.name}"</strong>? Qualquer sistema usando esta chave perderá o acesso imediatamente.</p>
+            <div className="mt-6 flex justify-end space-x-3">
+                <button type="button" onClick={() => setApiKeyToDelete(null)} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancelar</button>
+                <button type="button" onClick={handleDeleteApiKey} className="bg-red-600 text-white font-bold py-2 px-4 rounded-lg">Revogar</button>
+            </div>
+        </div>
       </Modal>
     </div>
   );
