@@ -12,6 +12,8 @@ async function startServer() {
     const app = express();
     const port = parseInt(process.env.PORT || '3001', 10);
 
+    const isProduction = process.env.NODE_ENV === 'production';
+
     // --- Scheduled Job for Notifications ---
     const runScheduledChecks = async () => {
         console.log(`[Scheduler] Running scheduled checks at ${new Date().toISOString()}`);
@@ -89,11 +91,21 @@ async function startServer() {
         }
     };
 
-    // Run the check every 8 hours (3 times a day)
-    const EIGHT_HOURS_IN_MS = 8 * 60 * 60 * 1000;
-    setInterval(runScheduledChecks, EIGHT_HOURS_IN_MS);
+    if (isProduction) {
+        const EIGHT_HOURS_IN_MS = 8 * 60 * 60 * 1000;
+        setInterval(runScheduledChecks, EIGHT_HOURS_IN_MS);
+    }
     // --- End of Scheduled Job ---
 
+
+    // --- ORDER OF OPERATIONS IS CRITICAL ---
+
+    // 1. Core Middlewares (for all routes)
+    app.set('trust proxy', true);
+    app.use(cors({ origin: true, credentials: true }));
+    app.use(express.json({ limit: '20mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+    app.use(cookieParser());
 
     // Middleware to attach Prisma client to each request
     const prismaMiddleware = (req: Request, res: Response, next: NextFunction) => {
@@ -101,33 +113,24 @@ async function startServer() {
         next();
     };
 
-    // Core Middlewares
-    app.set('trust proxy', true); // Trust the full proxy chain
-    app.use(cors({ origin: true, credentials: true }));
-    app.use(express.json({ limit: '20mb' }));
-    app.use(express.urlencoded({ extended: true, limit: '20mb' }));
-    app.use(cookieParser());
-
-    app.use(prismaMiddleware);
-
-    // API Routes
-    app.use('/api', apiRouter);
-
-    // Serve Frontend
-    if (process.env.NODE_ENV === 'production') {
-        const frontendDist = path.resolve(__dirname, '..');
+    // 2. API Routes (with their specific middleware)
+    app.use('/api', prismaMiddleware, apiRouter);
+    
+    // 3. Frontend Serving (Production vs. Development)
+    if (isProduction) {
+        const buildPath = path.resolve(__dirname, '..');
         
-        // 1. Serve static assets from the 'dist' folder
-        app.use(express.static(frontendDist));
-
-        // 2. For any other GET request that is not for an API endpoint,
-        // serve the index.html file. This is the SPA fallback.
-        app.get(/^(?!\/api).*/, (req: Request, res: Response) => {
-            res.sendFile(path.resolve(frontendDist, 'index.html'));
+        // Serve static files from the build directory (CSS, JS, images)
+        app.use(express.static(buildPath));
+        
+        // SPA Fallback: For any request that doesn't match an API route or a static file,
+        // send the main index.html file. This MUST be after API routes and static serving.
+        app.get('*', (req: Request, res: Response) => {
+            res.sendFile(path.resolve(buildPath, 'index.html'));
         });
 
     } else {
-        // Use Vite as middleware in development
+        // In development, we use Vite's dev server as middleware.
         const { createServer: createViteServer } = await import('vite');
         const vite = await createViteServer({
             root: path.resolve(__dirname, '..'), // Explicitly set project root
