@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authRouter, authMiddleware } from '../auth';
+import { authRouter, authMiddleware, apiKeyMiddleware } from '../auth';
 import { mainRouter } from './main';
 import { usersRouter } from './users';
 import { clientsRouter } from './clients';
@@ -18,7 +18,10 @@ const router = Router();
 // Public routes (login/logout)
 router.use(authRouter);
 
-// All subsequent routes are protected by the auth middleware
+// Apply API key middleware first to check for Bearer tokens
+router.use(apiKeyMiddleware);
+
+// All subsequent routes are protected by the cookie-based auth middleware if no API key was found
 router.use(authMiddleware);
 
 // Protected routes
