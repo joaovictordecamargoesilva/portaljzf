@@ -64,7 +64,7 @@ const getApiKeys = async (req: Request, res: Response) => {
     const keys = await req.prisma.apiKey.findMany({
         select: { id: true, name: true, createdAt: true }
     });
-    res.json(keys.map(k => ({...k, createdAt: k.createdAt.toISOString()})));
+    res.json(keys.map((k: { id: string; name: string; createdAt: Date }) => ({ ...k, createdAt: k.createdAt.toISOString() })));
 };
 
 const createApiKey = async (req: Request, res: Response) => {
